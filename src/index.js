@@ -1,5 +1,18 @@
 const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder, REST, Routes } = require('discord.js');
+const express = require('express');
 const config = require('./config');
+
+// Setup mini Express server to satisfy Render's port requirements
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.get('/', (req, res) => {
+    res.send('Vanatge Bot is online and running!');
+});
+
+app.listen(PORT, () => {
+    console.log(`[Web] Server is listening on port ${PORT}`);
+});
 
 const client = new Client({
     intents: [
@@ -32,14 +45,9 @@ client.once('ready', async () => {
     }
 });
 
-// DM owners when ANY new bot joins your server (Vanatge's server)
+// DM owners when ANY new bot joins the server
 client.on('guildMemberAdd', async member => {
-    // Check if the user that joined is a bot
     if (!member.user.bot) return;
-
-    // Optional: If you want this to only trigger in your specific main server, 
-    // uncomment the line below and replace YOUR_GUILD_ID with that server's ID:
-    // if (member.guild.id !== 'YOUR_GUILD_ID') return;
 
     const ownerMessage = `🤖 **New Bot Joined Server!**\n* **Bot Name:** ${member.user.tag}\n* **Server:** ${member.guild.name}\n* **Bot ID:** ${member.id}`;
     
@@ -60,7 +68,6 @@ client.on('messageCreate', async message => {
     if (message.author.bot) return;
     const content = message.content.toLowerCase();
 
-    // .verify command
     if (content === '.verify') {
         const row = new ActionRowBuilder()
             .addComponents(
@@ -76,7 +83,6 @@ client.on('messageCreate', async message => {
         });
     }
 
-    // .ping command (Owner Only)
     if (content === '.ping') {
         if (!config.owners.includes(message.author.id)) {
             return message.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
@@ -88,9 +94,8 @@ client.on('messageCreate', async message => {
     }
 });
 
-// Handle interactions (Slash commands + Button clicks)
+// Handle interactions
 client.on('interactionCreate', async interaction => {
-    // Slash commands
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'verify') {
             const row = new ActionRowBuilder()
@@ -118,7 +123,6 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // Instant role-assignment button
     if (interaction.isButton() && interaction.customId === 'instant_verify') {
         try {
             const member = await interaction.guild.members.fetch(interaction.user.id);
