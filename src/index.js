@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle,
 const express = require('express');
 const config = require('./config');
 
-// Setup mini Express server to satisfy Render's port requirements
+// Mini Express server for Render port requirements
 const app = express();
 const PORT = process.env.PORT || 10000;
 
@@ -17,7 +17,9 @@ app.listen(PORT, () => {
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent // Required for . commands to work
     ]
 });
 
@@ -106,10 +108,10 @@ client.on('interactionCreate', async interaction => {
                         .setStyle(ButtonStyle.Success)
                 );
 
+            // PUBLIC reply so everyone can see the verify button panel
             await interaction.reply({
-                content: 'Click the button below to verify instantly and get your role:',
-                components: [row],
-                ephemeral: true
+                content: 'Click the button below to verify instantly and get access to the Server:',
+                components: [row]
             });
         }
 
