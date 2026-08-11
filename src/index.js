@@ -1,107 +1,139 @@
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder, REST, Routes } = require('discord.js');
 const config = require('./config');
-const { startServer } = require('./server');
-const { getDb } = require('./database');
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-    ],
+        GatewayIntentBits.GuildMembers
+    ]
 });
 
-client.once('ready', () => {
+client.once('ready', async () => {
     console.log(`[Bot] Logged in as ${client.user.tag}!`);
-    startServer(client);
+
+    const rest = new REST({ version: '10' }).setToken(config.token);
+    try {
+        const commands = [
+            new SlashCommandBuilder()
+                .setName('verify')
+                .setDescription('Sends the verification panel'),
+            new SlashCommandBuilder()
+                .setName('ping')
+                .setDescription('Check bot latency (Owner Only)')
+        ].map(command => command.toJSON());
+
+        await rest.put(
+            Routes.applicationCommands(config.clientId),
+            { body: commands },
+        );
+        console.log('[Bot] Slash commands registered successfully.');
+    } catch (error) {
+        console.error(error);
+    }
 });
 
+// DM owners when ANY new bot joins your server (Vanatge's server)
+client.on('guildMemberAdd', async member => {
+    // Check if the user that joined is a bot
+    if (!member.user.bot) return;
+
+    // Optional: If you want this to only trigger in your specific main server, 
+    // uncomment the line below and replace YOUR_GUILD_ID with that server's ID:
+    // if (member.guild.id !== 'YOUR_GUILD_ID') return;
+
+    const ownerMessage = `🤖 **New Bot Joined Server!**\n* **Bot Name:** ${member.user.tag}\n* **Server:** ${member.guild.name}\n* **Bot ID:** ${member.id}`;
+    
+    for (const ownerId of config.owners) {
+        try {
+            const ownerUser = await client.users.fetch(ownerId);
+            if (ownerUser) {
+                await ownerUser.send(ownerMessage);
+            }
+        } catch (err) {
+            console.error(`Could not DM owner ${ownerId}:`, err);
+        }
+    }
+});
+
+// Text commands: .verify and owner-only .ping
 client.on('messageCreate', async message => {
     if (message.author.bot) return;
+    const content = message.content.toLowerCase();
 
-    const isOwner = config.owners.includes(message.author.id);
+    // .verify command
+    if (content === '.verify') {
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('instant_verify')
+                    .setLabel('Verify')
+                    .setStyle(ButtonStyle.Success)
+            );
 
-    // .verify Command
-    if (message.content === '.verify') {
-        if (!isOwner) return message.reply('You do not have permission to use this command.');
-
-        const oauthUrl = config.verifyUrl;
-
-        const embed = new EmbedBuilder()
-            .setTitle('Server Verification')
-            .setDescription('Click the button below to authorize the external app and complete your verification.')
-            .setColor(0x00FF00);
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setLabel('Verify (External App)')
-                .setStyle(ButtonStyle.Link)
-                .setURL(oauthUrl)
-        );
-
-        await message.channel.send({ embeds: [embed], components: [row] });
-        await message.delete().catch(() => {});
+        await message.channel.send({
+            content: 'Click the button below to verify instantly and get your role:',
+            components: [row]
+        });
     }
 
-    // .pullall Command
-    if (message.content === '.pullall') {
-        if (!isOwner) return message.reply('You do not have permission to use this command.');
-
-        const targetGuildId = message.guild.id;
-        const db = getDb();
-
-        if (db.length === 0) {
-            return message.reply('No verified users found in the database yet.');
+    // .ping command (Owner Only)
+    if (content === '.ping') {
+        if (!config.owners.includes(message.author.id)) {
+            return message.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
         }
 
-        await message.reply('Processing `.pullall`... Adding verified users to this server. Please wait.');
+        const sent = await message.reply('Pinging...');
+        const latency = sent.createdTimestamp - message.createdTimestamp;
+        await sent.edit(`🏓 Pong! Latency: **${latency}ms**. API Latency: **${Math.round(client.ws.ping)}ms**.`);
+    }
+});
 
-        let addedCount = 0;
-        let failedCount = 0;
-        let addedUsersList = [];
+// Handle interactions (Slash commands + Button clicks)
+client.on('interactionCreate', async interaction => {
+    // Slash commands
+    if (interaction.isChatInputCommand()) {
+        if (interaction.commandName === 'verify') {
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('instant_verify')
+                        .setLabel('Verify')
+                        .setStyle(ButtonStyle.Success)
+                );
 
-        for (const user of db) {
-            try {
-                const response = await fetch(`https://discord.com/api/guilds/${targetGuildId}/members/${user.id}`, {
-                    method: 'PUT',
-                    headers: {
-                        Authorization: `Bot ${config.token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        access_token: user.access_token,
-                    }),
-                });
+            await interaction.reply({
+                content: 'Click the button below to verify instantly and get your role:',
+                components: [row],
+                ephemeral: true
+            });
+        }
 
-                if (response.ok || response.status === 204) {
-                    addedCount++;
-                    addedUsersList.push(`- <@${user.id}> (${user.username})`);
-                } else {
-                    failedCount++;
-                }
-            } catch (err) {
-                console.error(`Failed to add user ${user.id}:`, err);
-                failedCount++;
+        if (interaction.commandName === 'ping') {
+            if (!config.owners.includes(interaction.user.id)) {
+                return interaction.reply({ content: '❌ You do not have permission to use this command.', ephemeral: true });
             }
+
+            const latency = Date.now() - interaction.createdTimestamp;
+            await interaction.reply({ content: `🏓 Pong! Latency: **${latency}ms**. API Latency: **${Math.round(client.ws.ping)}ms**.`, ephemeral: true });
         }
+    }
 
-        // Send summary DM to owner
+    // Instant role-assignment button
+    if (interaction.isButton() && interaction.customId === 'instant_verify') {
         try {
-            const summaryEmbed = new EmbedBuilder()
-                .setTitle('Pullall Execution Summary')
-                .setDescription(`Successfully processed users for server: **${message.guild.name}**.`)
-                .addFields(
-                    { name: 'Successfully Added', value: `${addedCount}`, inline: true },
-                    { name: 'Failed / Skipped', value: `${failedCount}`, inline: true },
-                    { name: 'Added Users', value: addedUsersList.length > 0 ? addedUsersList.join('\n') : 'None' }
-                )
-                .setColor(0x0099FF)
-                .setTimestamp();
+            const member = await interaction.guild.members.fetch(interaction.user.id);
+            await member.roles.add(config.verifiedRoleId);
 
-            await message.author.send({ embeds: [summaryEmbed] });
-        } catch (dmErr) {
-            console.error('Could not send DM to owner:', dmErr);
-            message.channel.send(`${message.author}, I tried to DM you the summary, but your DMs are closed! Successfully added: ${addedCount}`);
+            await interaction.reply({
+                content: '✅ You have been successfully verified and given the role!',
+                ephemeral: true
+            });
+        } catch (error) {
+            console.error(error);
+            await interaction.reply({
+                content: '❌ Failed to give you the role. Make sure the bot role is higher than the verified role in server settings!',
+                ephemeral: true
+            });
         }
     }
 });
