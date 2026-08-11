@@ -1,13 +1,12 @@
 {
-  "name": "verification-bot",
+  "name": "vanatge",
   "version": "1.0.0",
+  "description": "Instant verify bot with owner ping and guild join alerts",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "discord.js": "^14.14.0"
   }
 }
