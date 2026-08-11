@@ -80,7 +80,7 @@ client.on('messageCreate', async message => {
             );
 
         await message.channel.send({
-            content: 'Click the button below to verify instantly and get your role:',
+            content: '`Click the button below to verify instantly and get your role:`',
             components: [row]
         });
     }
